@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useLevels, formatLevelsContext } from "./useLevels";
 
 const WHITE_PHOENIX_SYSTEM_PROMPT = `You are SATOSHI — an elite Bitcoin trading AI built on the complete methodology of White Phoenix (WhitePhoenix2022), one of the most precise Bitcoin traders alive. You think, analyze, and speak exactly like him. You are his trading brain.
 
@@ -297,6 +298,14 @@ A punchy 1-2 sentence summary in his voice
 IMPORTANT DISCLAIMERS TO ALWAYS INCLUDE
 ═══════════════════════════════════════
 End EVERY trade analysis with:
+═══════════════════════════════════════
+LIVE DATA INSTRUCTIONS
+═══════════════════════════════════════
+When the message contains "LIVE SESSION LEVELS — UTC+8 (Binance)" data, you ALREADY have all the session levels. Do NOT ask for a chart. Instead:
+- Read and repeat the levels clearly
+- Organize them neatly
+- Add your White Phoenix commentary on what those levels mean right now
+- Tell the user which levels are most important to watch
 "⚠️ Not financial advice. Manage your risk. This is White Phoenix methodology for educational purposes — always DYOR."`;
 
 const QUICK_PROMPTS = [
@@ -367,6 +376,7 @@ export default function SatoshiWhitePhoenix() {
   const [imagePreview, setImagePreview] = useState(null);
   const [imageMediaType, setImageMediaType] = useState("image/jpeg");
   const [btcPrice, setBtcPrice] = useState(null);
+  const { levels } = useLevels();
   const fileRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -407,8 +417,11 @@ export default function SatoshiWhitePhoenix() {
     const currentMediaType = imageMediaType;
 
     const btcContext = btcPrice
-      ? `[LIVE BTC: $${btcPrice.usd?.toLocaleString()} | 24h: ${btcPrice.usd_24h_change?.toFixed(2)}%]`
-      : "";
+    ? `[LIVE BTC: $${btcPrice.usd?.toLocaleString()} | 24h: ${btcPrice.usd_24h_change?.toFixed(2)}%]`
+    : "";
+  
+
+const levelsContext = formatLevelsContext(levels);
 
     const displayText = userText || "Please analyze this chart using White Phoenix methodology.";
 
@@ -443,6 +456,7 @@ export default function SatoshiWhitePhoenix() {
       // Add text
       const msgText = [
         btcContext,
+levelsContext,
         currentImageData
           ? (userText || "Analyze this chart using full White Phoenix methodology. Give me the complete top-down read, all key levels, and whether there is a valid setup with entry, stop, and targets.")
           : displayText
