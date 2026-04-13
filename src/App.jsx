@@ -263,9 +263,28 @@ MACRO CONTEXT (Always layer this in)
 - Bear market = "accumulations keep turning into redistributions"
 
 ═══════════════════════════════════════
+MULTI-TIMEFRAME CHART ANALYSIS
+═══════════════════════════════════════
+When multiple charts are provided, ALWAYS analyze in this exact order:
+1. Start with the HIGHEST timeframe chart first (Daily/Weekly)
+2. Work down to lower timeframes (4H → 1H → 15m → 5m)
+3. Each timeframe should CONFIRM or DENY the higher timeframe bias
+4. Only look for entries on the LOWEST timeframe provided
+5. Label each chart analysis clearly: "📊 DAILY:", "📊 4H:", "📊 15M:" etc.
+
+═══════════════════════════════════════
+LIVE DATA INSTRUCTIONS
+═══════════════════════════════════════
+When the message contains "LIVE SESSION LEVELS — UTC+8 (Binance)" data, you ALREADY have all the session levels. Do NOT ask for a chart. Instead:
+- Read and repeat the levels clearly
+- Organize them neatly
+- Add your White Phoenix commentary on what those levels mean right now
+- Tell the user which levels are most important to watch
+
+═══════════════════════════════════════
 CHART ANALYSIS RESPONSE FORMAT
 ═══════════════════════════════════════
-When analyzing a chart image, ALWAYS respond in this exact structure:
+When analyzing chart images, ALWAYS respond in this exact structure:
 
 **📍 CURRENT LOCATION**
 Where is price relative to: Range (high/mid/low), VWAP, key OBs, session levels
@@ -298,25 +317,19 @@ A punchy 1-2 sentence summary in his voice
 IMPORTANT DISCLAIMERS TO ALWAYS INCLUDE
 ═══════════════════════════════════════
 End EVERY trade analysis with:
-═══════════════════════════════════════
-LIVE DATA INSTRUCTIONS
-═══════════════════════════════════════
-When the message contains "LIVE SESSION LEVELS — UTC+8 (Binance)" data, you ALREADY have all the session levels. Do NOT ask for a chart. Instead:
-- Read and repeat the levels clearly
-- Organize them neatly
-- Add your White Phoenix commentary on what those levels mean right now
-- Tell the user which levels are most important to watch
 "⚠️ Not financial advice. Manage your risk. This is White Phoenix methodology for educational purposes — always DYOR."`;
 
+const TIMEFRAME_LABELS = ["Daily", "4H", "1H", "15m", "5m"];
+
 const QUICK_PROMPTS = [
-  "Analyze this chart for a setup 📊",
+  "Full top-down analysis 📊",
   "Where's the range high and low? 📦",
   "Is there an SFP forming? 🔄",
   "What would White Phoenix do here? 🦅",
   "Read the distribution/accumulation model 🌊",
   "Where's the anchor VWAP short zone? ⚓",
   "Is this the last swing short? 🎯",
-  "Top-down analysis from daily to entry ⬇️",
+  "What are the current session levels? 📍",
 ];
 
 function TypingDots() {
@@ -351,18 +364,35 @@ function Message({ msg }) {
       }}>
         {isUser ? "👤" : "🦅"}
       </div>
-      <div style={{
-        maxWidth: "80%",
-        background: isUser ? "rgba(59,130,246,0.08)" : "rgba(247,147,26,0.04)",
-        border: isUser ? "1px solid rgba(59,130,246,0.2)" : "1px solid rgba(247,147,26,0.18)",
-        borderRadius: isUser ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
-        padding: "13px 17px", color: "#e8e8e8", fontSize: 14,
-        lineHeight: 1.75, whiteSpace: "pre-wrap", letterSpacing: "0.01em",
-      }}>
-        {msg.content}
-        {msg.image && (
-          <img src={msg.image} alt="chart" style={{ maxWidth: "100%", borderRadius: 8, marginTop: 10, display: "block" }} />
+      <div style={{ maxWidth: "80%", display: "flex", flexDirection: "column", gap: 8 }}>
+        {/* Show chart previews if any */}
+        {msg.images && msg.images.length > 0 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {msg.images.map((img, i) => (
+              <div key={i} style={{ position: "relative" }}>
+                <div style={{
+                  position: "absolute", top: 4, left: 4, zIndex: 1,
+                  background: "rgba(247,147,26,0.9)", borderRadius: 4,
+                  padding: "2px 6px", fontSize: 9, color: "#000", fontWeight: 700,
+                  letterSpacing: "0.05em",
+                }}>{img.label}</div>
+                <img src={img.preview} alt={img.label} style={{
+                  width: 120, height: 80, objectFit: "cover",
+                  borderRadius: 8, border: "1px solid rgba(247,147,26,0.3)",
+                }} />
+              </div>
+            ))}
+          </div>
         )}
+        <div style={{
+          background: isUser ? "rgba(59,130,246,0.08)" : "rgba(247,147,26,0.04)",
+          border: isUser ? "1px solid rgba(59,130,246,0.2)" : "1px solid rgba(247,147,26,0.18)",
+          borderRadius: isUser ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
+          padding: "13px 17px", color: "#e8e8e8", fontSize: 14,
+          lineHeight: 1.75, whiteSpace: "pre-wrap", letterSpacing: "0.01em",
+        }}>
+          {msg.content}
+        </div>
       </div>
     </div>
   );
@@ -372,9 +402,7 @@ export default function SatoshiWhitePhoenix() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [imageData, setImageData] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [imageMediaType, setImageMediaType] = useState("image/jpeg");
+  const [images, setImages] = useState([]); // [{data, preview, mediaType, label}]
   const [btcPrice, setBtcPrice] = useState(null);
   const { levels } = useLevels();
   const fileRef = useRef(null);
@@ -391,80 +419,84 @@ export default function SatoshiWhitePhoenix() {
   useEffect(() => { fetchBTC(); const t = setInterval(fetchBTC, 60000); return () => clearInterval(t); }, [fetchBTC]);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
 
-  const handleImage = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
-    setImageMediaType(mediaType);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const base64 = ev.target.result.split(",")[1];
-      setImageData(base64);
-      setImagePreview(ev.target.result);
-    };
-    reader.readAsDataURL(file);
+  const handleImages = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    files.forEach((file, index) => {
+      const mediaType = file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const base64 = ev.target.result.split(",")[1];
+        const label = TIMEFRAME_LABELS[images.length + index] || `Chart ${images.length + index + 1}`;
+        setImages(prev => {
+          if (prev.length >= 5) return prev; // max 5 charts
+          return [...prev, { data: base64, preview: ev.target.result, mediaType, label }];
+        });
+      };
+      reader.readAsDataURL(file);
+    });
     e.target.value = "";
+  };
+
+  const removeImage = (index) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateLabel = (index, newLabel) => {
+    setImages(prev => prev.map((img, i) => i === index ? { ...img, label: newLabel } : img));
   };
 
   const sendMessage = async (text) => {
     const userText = text || input.trim();
-    if ((!userText && !imageData) || loading) return;
+    if ((!userText && images.length === 0) || loading) return;
     setInput("");
 
-    // Capture image data BEFORE clearing state
-    const currentImageData = imageData;
-    const currentImagePreview = imagePreview;
-    const currentMediaType = imageMediaType;
+    const currentImages = [...images];
+    setImages([]);
 
     const btcContext = btcPrice
-    ? `[LIVE BTC: $${btcPrice.usd?.toLocaleString()} | 24h: ${btcPrice.usd_24h_change?.toFixed(2)}%]`
-    : "";
-  
+      ? `[LIVE BTC: $${btcPrice.usd?.toLocaleString()} | 24h: ${btcPrice.usd_24h_change?.toFixed(2)}%]`
+      : "";
 
-const levelsContext = formatLevelsContext(levels);
-
-    const displayText = userText || "Please analyze this chart using White Phoenix methodology.";
+    const levelsContext = formatLevelsContext(levels);
+    const displayText = userText || `Please analyze these ${currentImages.length} chart(s) using full White Phoenix top-down methodology.`;
 
     const userMsg = {
       role: "user",
       content: displayText,
-      image: currentImagePreview,
+      images: currentImages,
     };
 
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setLoading(true);
-    setImageData(null);
-    setImagePreview(null);
 
     try {
-      // Build current message content array
       const apiContent = [];
 
-      // Add image first if present
-      if (currentImageData) {
+      // Add all images with their timeframe labels
+      currentImages.forEach((img) => {
         apiContent.push({
           type: "image",
-          source: {
-            type: "base64",
-            media_type: currentMediaType,
-            data: currentImageData,
-          },
+          source: { type: "base64", media_type: img.mediaType, data: img.data },
         });
-      }
+        apiContent.push({
+          type: "text",
+          text: `[Above image is the ${img.label} timeframe chart]`,
+        });
+      });
 
-      // Add text
-      const msgText = [
-        btcContext,
-levelsContext,
-        currentImageData
-          ? (userText || "Analyze this chart using full White Phoenix methodology. Give me the complete top-down read, all key levels, and whether there is a valid setup with entry, stop, and targets.")
-          : displayText
-      ].filter(Boolean).join("\n");
+      // Build the analysis request text
+      const chartCount = currentImages.length;
+      const chartLabels = currentImages.map(img => img.label).join(", ");
+      const analysisRequest = chartCount > 0
+        ? `${userText || `Analyze these ${chartCount} chart(s) (${chartLabels}) using full White Phoenix top-down methodology. Start from the highest timeframe and work down. Give me the complete read, all key levels, distribution/accumulation model, and whether there is a valid setup with entry, stop, and targets.`}`
+        : displayText;
 
+      const msgText = [btcContext, levelsContext, analysisRequest].filter(Boolean).join("\n");
       apiContent.push({ type: "text", text: msgText });
 
-      // Build history — strip images from old messages (API only needs current image)
       const historyMessages = messages.map(m => ({
         role: m.role,
         content: typeof m.content === "string" ? m.content : String(m.content),
@@ -477,7 +509,7 @@ levelsContext,
 
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
           "anthropic-version": "2023-06-01",
@@ -485,7 +517,7 @@ levelsContext,
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
+          max_tokens: 1500,
           system: WHITE_PHOENIX_SYSTEM_PROMPT,
           messages: apiMessages,
         }),
@@ -493,11 +525,10 @@ levelsContext,
 
       const data = await res.json();
 
-      // Catch API-level errors
       if (data.error) {
         setMessages([...newMessages, {
           role: "assistant",
-          content: `⚠️ API Error: ${data.error.message || JSON.stringify(data.error)}\n\nTry sending the chart again.`
+          content: `⚠️ API Error: ${data.error.message || JSON.stringify(data.error)}\n\nTry again.`
         }]);
         setLoading(false);
         return;
@@ -539,18 +570,16 @@ levelsContext,
         ::-webkit-scrollbar-thumb{background:#2a1a08;border-radius:4px}
         textarea:focus{outline:none} textarea{resize:none}
         button:hover{opacity:.85}
+        select{outline:none;}
       `}</style>
 
-      {/* Grid BG */}
+      {/* BG */}
       <div style={{ position:"fixed",inset:0,pointerEvents:"none",zIndex:0,
         backgroundImage:`linear-gradient(rgba(247,147,26,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(247,147,26,0.025) 1px,transparent 1px)`,
         backgroundSize:"44px 44px",
       }}/>
       <div style={{ position:"fixed",top:-100,left:-100,width:450,height:450,borderRadius:"50%",
         background:"radial-gradient(circle,rgba(247,147,26,0.05) 0%,transparent 70%)",pointerEvents:"none",zIndex:0
-      }}/>
-      <div style={{ position:"fixed",bottom:-80,right:-80,width:380,height:380,borderRadius:"50%",
-        background:"radial-gradient(circle,rgba(180,80,0,0.07) 0%,transparent 70%)",pointerEvents:"none",zIndex:0
       }}/>
 
       {/* Header */}
@@ -560,7 +589,7 @@ levelsContext,
         borderBottom:"1px solid rgba(247,147,26,0.15)",
         backdropFilter:"blur(24px)", padding:"0 24px",
       }}>
-        <div style={{ maxWidth:860,margin:"0 auto",padding:"13px 0",display:"flex",alignItems:"center",justifyContent:"space-between" }}>
+        <div style={{ maxWidth:900,margin:"0 auto",padding:"13px 0",display:"flex",alignItems:"center",justifyContent:"space-between" }}>
           <div style={{ display:"flex",alignItems:"center",gap:14 }}>
             <div style={{
               width:46,height:46,borderRadius:12,
@@ -579,12 +608,16 @@ levelsContext,
           <div style={{ display:"flex",alignItems:"center",gap:16 }}>
             {btcPrice && (
               <div style={{ textAlign:"right" }}>
-                <div style={{ fontSize:15,fontWeight:600,color:"#fff",letterSpacing:"-0.01em" }}>
-                  ${btcPrice.usd?.toLocaleString()}
-                </div>
-                <div style={{ fontSize:10,color:isUp?"#22c55e":"#ef4444",letterSpacing:"0.06em" }}>
+                <div style={{ fontSize:15,fontWeight:600,color:"#fff" }}>${btcPrice.usd?.toLocaleString()}</div>
+                <div style={{ fontSize:10,color:isUp?"#22c55e":"#ef4444" }}>
                   {isUp?"▲":"▼"} {Math.abs(btcPrice.usd_24h_change).toFixed(2)}%
                 </div>
+              </div>
+            )}
+            {levels && (
+              <div style={{ textAlign:"right",borderLeft:"1px solid rgba(247,147,26,0.15)",paddingLeft:12 }}>
+                <div style={{ fontSize:9,color:"#F7931A",letterSpacing:"0.1em" }}>{levels.sessionName?.toUpperCase()} SESSION</div>
+                <div style={{ fontSize:9,color:"#4b3010",marginTop:2 }}>Levels: LIVE ✓</div>
               </div>
             )}
             <div style={{ display:"flex",alignItems:"center",gap:6 }}>
@@ -595,13 +628,10 @@ levelsContext,
             </div>
           </div>
         </div>
-
-        {/* Methodology strip */}
-        <div style={{ maxWidth:860,margin:"0 auto",paddingBottom:10,
-          display:"flex",gap:0,borderTop:"1px solid rgba(247,147,26,0.08)",
-          overflowX:"auto",
+        <div style={{ maxWidth:900,margin:"0 auto",paddingBottom:10,
+          display:"flex",gap:0,borderTop:"1px solid rgba(247,147,26,0.08)",overflowX:"auto",
         }}>
-          {["SFP","RDS","VWAP","OB","MODEL 2","RANGE","BLUE BOX","PO3"].map((tag,i) => (
+          {["SFP","RDS","VWAP","OB","MODEL 2","RANGE","BLUE BOX","PO3","MULTI-TF"].map((tag,i) => (
             <div key={i} style={{ flexShrink:0,padding:"7px 14px",borderRight:"1px solid rgba(247,147,26,0.08)",
               fontSize:9,color:"#6b4a20",letterSpacing:"0.15em",textAlign:"center"
             }}>{tag}</div>
@@ -611,42 +641,39 @@ levelsContext,
 
       {/* Chat */}
       <div style={{ flex:1,overflowY:"auto",position:"relative",zIndex:5 }}>
-        <div style={{ maxWidth:860,margin:"0 auto",padding:"24px 24px 140px" }}>
+        <div style={{ maxWidth:900,margin:"0 auto",padding:"24px 24px 180px" }}>
 
           {messages.length === 0 && (
             <div style={{ animation:"wpFadeUp 0.5s ease forwards" }}>
-              <div style={{ textAlign:"center",marginBottom:36,paddingTop:20 }}>
+              <div style={{ textAlign:"center",marginBottom:28,paddingTop:20 }}>
                 <div style={{ fontSize:52,marginBottom:16,animation:"wpFeather 4s ease-in-out infinite",display:"inline-block" }}>🦅</div>
                 <div style={{ fontFamily:"'Syne',sans-serif",fontWeight:900,fontSize:26,marginBottom:8,
                   background:"linear-gradient(135deg, #F7931A, #ffd700)",
-                  WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"-0.01em"
+                  WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
                 }}>White Phoenix Brain — Online</div>
-                <div style={{ fontSize:12,color:"#6b4a20",lineHeight:1.9,letterSpacing:"0.04em",maxWidth:500,margin:"0 auto" }}>
-                  Send me a BTC chart and I'll analyze it exactly the way White Phoenix does.<br/>
-                  Range · SFP · OB · VWAP · Distribution Models · Entry Trigger
+                <div style={{ fontSize:12,color:"#6b4a20",lineHeight:1.9,maxWidth:500,margin:"0 auto" }}>
+                  Upload up to 5 timeframe charts for full top-down analysis.<br/>
+                  Daily → 4H → 1H → 15m → 5m
                 </div>
               </div>
 
-              {/* Chart upload CTA */}
+              {/* Upload zone */}
               <div style={{
                 border:"2px dashed rgba(247,147,26,0.25)",borderRadius:16,
-                padding:"28px 24px",textAlign:"center",marginBottom:28,
+                padding:"24px",textAlign:"center",marginBottom:20,
                 background:"rgba(247,147,26,0.02)",cursor:"pointer",
               }} onClick={() => fileRef.current?.click()}>
-                <div style={{ fontSize:32,marginBottom:10 }}>📊</div>
-                <div style={{ fontSize:13,color:"#a07040",marginBottom:6 }}>Drop a chart here or click to upload</div>
-                <div style={{ fontSize:11,color:"#4b3010",letterSpacing:"0.06em" }}>PNG · JPG · JPEG · WEBP</div>
+                <div style={{ fontSize:28,marginBottom:8 }}>📊</div>
+                <div style={{ fontSize:13,color:"#a07040",marginBottom:4 }}>Upload up to 5 charts at once</div>
+                <div style={{ fontSize:11,color:"#4b3010" }}>Daily · 4H · 1H · 15m · 5m</div>
               </div>
 
               <div style={{ display:"flex",flexWrap:"wrap",gap:10,justifyContent:"center" }}>
                 {QUICK_PROMPTS.map((s,i) => (
                   <button key={i} onClick={() => sendMessage(s)} style={{
-                    background:"rgba(247,147,26,0.06)",
-                    border:"1px solid rgba(247,147,26,0.2)",
-                    borderRadius:10,padding:"10px 15px",
-                    color:"#a07040",fontSize:12,cursor:"pointer",
-                    fontFamily:"inherit",letterSpacing:"0.02em",
-                    transition:"all 0.2s",
+                    background:"rgba(247,147,26,0.06)",border:"1px solid rgba(247,147,26,0.2)",
+                    borderRadius:10,padding:"9px 14px",color:"#a07040",fontSize:12,
+                    cursor:"pointer",fontFamily:"inherit",letterSpacing:"0.02em",
                   }}>{s}</button>
                 ))}
               </div>
@@ -673,21 +700,62 @@ levelsContext,
         </div>
       </div>
 
-      {/* Image preview bar */}
-      {imagePreview && (
+      {/* Chart preview bar */}
+      {images.length > 0 && (
         <div style={{
-          position:"fixed",bottom:100,left:"50%",transform:"translateX(-50%)",
-          zIndex:25,background:"rgba(8,9,12,0.95)",
-          border:"1px solid rgba(247,147,26,0.3)",borderRadius:12,
-          padding:"10px 14px",display:"flex",alignItems:"center",gap:12,
-          maxWidth:400,
+          position:"fixed",bottom:90,left:"50%",transform:"translateX(-50%)",
+          zIndex:25,background:"rgba(8,9,12,0.97)",
+          border:"1px solid rgba(247,147,26,0.25)",borderRadius:14,
+          padding:"12px 16px",
+          width:"calc(100% - 48px)",maxWidth:860,
+          boxSizing:"border-box",
         }}>
-          <img src={imagePreview} alt="preview" style={{ width:60,height:40,objectFit:"cover",borderRadius:6 }}/>
-          <div style={{ flex:1,fontSize:11,color:"#a07040" }}>Chart ready to analyze</div>
-          <button onClick={() => { setImageData(null); setImagePreview(null); }} style={{
-            background:"rgba(255,80,80,0.15)",border:"1px solid rgba(255,80,80,0.3)",
-            borderRadius:6,padding:"4px 10px",color:"#ff6060",fontSize:11,cursor:"pointer",fontFamily:"inherit"
-          }}>✕ Remove</button>
+          <div style={{ fontSize:10,color:"#6b4a20",marginBottom:10,letterSpacing:"0.1em" }}>
+            {images.length}/5 CHARTS LOADED — Click label to change timeframe
+          </div>
+          <div style={{ display:"flex",gap:10,overflowX:"auto" }}>
+            {images.map((img, i) => (
+              <div key={i} style={{ flexShrink:0,position:"relative" }}>
+                <img src={img.preview} alt={img.label} style={{
+                  width:100,height:65,objectFit:"cover",borderRadius:8,
+                  border:"1px solid rgba(247,147,26,0.3)",display:"block",
+                }}/>
+                {/* Label selector */}
+                <select
+                  value={img.label}
+                  onChange={e => updateLabel(i, e.target.value)}
+                  style={{
+                    position:"absolute",bottom:0,left:0,right:0,
+                    background:"rgba(0,0,0,0.85)",color:"#F7931A",
+                    border:"none",borderRadius:"0 0 8px 8px",
+                    fontSize:10,padding:"3px 4px",cursor:"pointer",
+                    fontFamily:"inherit",letterSpacing:"0.05em",width:"100%",
+                  }}
+                >
+                  {TIMEFRAME_LABELS.map(tf => (
+                    <option key={tf} value={tf}>{tf}</option>
+                  ))}
+                </select>
+                {/* Remove button */}
+                <button onClick={() => removeImage(i)} style={{
+                  position:"absolute",top:-6,right:-6,
+                  width:18,height:18,borderRadius:"50%",
+                  background:"#ef4444",border:"none",color:"#fff",
+                  fontSize:10,cursor:"pointer",display:"flex",
+                  alignItems:"center",justifyContent:"center",lineHeight:1,
+                }}>✕</button>
+              </div>
+            ))}
+            {/* Add more button */}
+            {images.length < 5 && (
+              <div style={{
+                width:100,height:65,borderRadius:8,flexShrink:0,
+                border:"2px dashed rgba(247,147,26,0.2)",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                cursor:"pointer",color:"#4b3010",fontSize:20,
+              }} onClick={() => fileRef.current?.click()}>+</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -697,26 +765,46 @@ levelsContext,
         background:"rgba(8,9,12,0.97)",
         borderTop:"1px solid rgba(247,147,26,0.12)",
         backdropFilter:"blur(24px)",
-        padding:"14px 24px 18px",
+        padding:"12px 24px 16px",
       }}>
-        <div style={{ maxWidth:860,margin:"0 auto" }}>
+        <div style={{ maxWidth:900,margin:"0 auto" }}>
           <div style={{ display:"flex",gap:10,alignItems:"flex-end" }}>
-            {/* Chart upload button */}
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleImage} style={{ display:"none" }} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImages}
+              style={{ display:"none" }}
+            />
             <button onClick={() => fileRef.current?.click()} style={{
               width:46,height:46,borderRadius:12,flexShrink:0,
-              background: imageData ? "linear-gradient(135deg,#F7931A,#c46c0a)" : "rgba(247,147,26,0.1)",
+              background: images.length > 0 ? "linear-gradient(135deg,#F7931A,#c46c0a)" : "rgba(247,147,26,0.1)",
               border:"1px solid rgba(247,147,26,0.25)",
-              cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",
-              boxShadow: imageData ? "0 0 16px rgba(247,147,26,0.4)" : "none",
-              transition:"all 0.2s",
-            }}>📊</button>
+              cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",
+              boxShadow: images.length > 0 ? "0 0 16px rgba(247,147,26,0.4)" : "none",
+              position:"relative",
+            }}>
+              📊
+              {images.length > 0 && (
+                <div style={{
+                  position:"absolute",top:-6,right:-6,
+                  width:18,height:18,borderRadius:"50%",
+                  background:"#F7931A",color:"#000",
+                  fontSize:10,fontWeight:700,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                }}>{images.length}</div>
+              )}
+            </button>
 
             <textarea
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
-              placeholder="Ask White Phoenix anything, or upload a chart for analysis..."
+              placeholder={images.length > 0
+                ? `${images.length} chart(s) loaded — add context or just hit ⚡ for full analysis...`
+                : "Ask White Phoenix anything, or upload charts for analysis..."
+              }
               rows={1}
               style={{
                 flex:1,background:"rgba(247,147,26,0.04)",
@@ -724,26 +812,27 @@ levelsContext,
                 borderRadius:12,padding:"13px 16px",
                 color:"#e8e8e8",fontSize:14,fontFamily:"inherit",
                 letterSpacing:"0.02em",lineHeight:1.5,
-                boxSizing:"border-box",transition:"border-color 0.2s",
+                boxSizing:"border-box",
               }}
               onFocus={e=>e.target.style.borderColor="rgba(247,147,26,0.5)"}
               onBlur={e=>e.target.style.borderColor="rgba(247,147,26,0.2)"}
             />
             <button
               onClick={() => sendMessage()}
-              disabled={(!input.trim() && !imageData) || loading}
+              disabled={((!input.trim() && images.length === 0) || loading)}
               style={{
                 width:46,height:46,borderRadius:12,
-                background: ((!input.trim()&&!imageData)||loading) ? "rgba(247,147,26,0.1)" : "linear-gradient(135deg,#F7931A,#c46c0a)",
-                border:"none",cursor:((!input.trim()&&!imageData)||loading)?"not-allowed":"pointer",
+                background: ((!input.trim()&&images.length===0)||loading) ? "rgba(247,147,26,0.1)" : "linear-gradient(135deg,#F7931A,#c46c0a)",
+                border:"none",
+                cursor:((!input.trim()&&images.length===0)||loading)?"not-allowed":"pointer",
                 fontSize:20,display:"flex",alignItems:"center",justifyContent:"center",
-                flexShrink:0,transition:"all 0.2s",
-                boxShadow:((!input.trim()&&!imageData)||loading)?"none":"0 0 20px rgba(247,147,26,0.5)",
+                flexShrink:0,
+                boxShadow:((!input.trim()&&images.length===0)||loading)?"none":"0 0 20px rgba(247,147,26,0.5)",
               }}
             >{loading?"⏳":"⚡"}</button>
           </div>
-          <div style={{ textAlign:"center",marginTop:8,fontSize:9,color:"#2a1508",letterSpacing:"0.1em" }}>
-            WHITE PHOENIX METHODOLOGY · EDUCATIONAL ONLY · NOT FINANCIAL ADVICE · DYOR · MANAGE YOUR RISK
+          <div style={{ textAlign:"center",marginTop:6,fontSize:9,color:"#2a1508",letterSpacing:"0.1em" }}>
+            WHITE PHOENIX METHODOLOGY · EDUCATIONAL ONLY · NOT FINANCIAL ADVICE · DYOR · MAX 5 CHARTS
           </div>
         </div>
       </div>
